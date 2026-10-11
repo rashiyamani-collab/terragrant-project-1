@@ -15,12 +15,29 @@ on:
 env:
   TOFU_VERSION: "1.8.8"
   TG_VERSION: "0.77.22"
-  # Use recommended non-interactive flag for Terragrunt
   TG_NON_INTERACTIVE: "true"
   TF_IN_AUTOMATION: "true"
 
 jobs:
+  # Step 1: SonarCloud Code Analysis & Quality Gate
+  sonarcloud:
+    name: SonarCloud Code Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Shallow clones should be disabled for accurate SonarCloud analysis
+
+      - name: SonarCloud Scan
+        uses: SonarSource/sonarcloud-github-action@v3.1.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # Needed to get PR information, if any
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
+  # Step 2: Detect Target Environment based on Git Branch
   set-env:
+    needs: sonarcloud
     runs-on: ubuntu-latest
     outputs:
       target_env: ${{ steps.select_env.outputs.target_env }}
@@ -35,6 +52,7 @@ jobs:
             echo "target_env=dev" >> $GITHUB_OUTPUT
           fi
 
+  # Step 3: Infrastructure Provisioning
   infrastructure:
     needs: set-env
     runs-on: ubuntu-latest
@@ -65,9 +83,9 @@ jobs:
           tg_version: ${{ env.TG_VERSION }}
           tg_dir: "infra/live/${{ needs.set-env.outputs.target_env }}/frontend"
           tg_command: "apply"
-          # Pass auto-approve directly to avoid interactive prompt EOF errors
           args: "apply --auto-approve"
 
+  # Step 4: React App Build & S3/CloudFront Deployment
   deploy-app:
     needs: [set-env, infrastructure]
     if: github.event_name == 'push'
