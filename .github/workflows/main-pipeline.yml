@@ -12,7 +12,12 @@ on:
       - staging
       - main
 
+env:
+  TOFU_VERSION: "1.8.8"
+  TG_VERSION: "0.77.22"
+
 jobs:
+  # Step 1: Detect Target Environment based on Git Branch
   set-env:
     runs-on: ubuntu-latest
     outputs:
@@ -28,6 +33,7 @@ jobs:
             echo "target_env=dev" >> $GITHUB_OUTPUT
           fi
 
+  # Step 2: Infrastructure Provisioning (OpenTofu + Terragrunt)
   infrastructure:
     needs: set-env
     runs-on: ubuntu-latest
@@ -45,8 +51,8 @@ jobs:
       - name: Terragrunt Plan
         uses: gruntwork-io/terragrunt-action@v3
         with:
-          tofu_version: "1.8.8"
-          tg_version: "0.68.0"
+          tofu_version: ${{ env.TOFU_VERSION }}
+          tg_version: ${{ env.TG_VERSION }}
           tg_dir: "infra/live/${{ needs.set-env.outputs.target_env }}/frontend"
           tg_command: "plan"
 
@@ -54,12 +60,13 @@ jobs:
         if: github.event_name == 'push'
         uses: gruntwork-io/terragrunt-action@v3
         with:
-          tofu_version: "1.8.8"
-          tg_version: "0.68.0"
+          tofu_version: ${{ env.TOFU_VERSION }}
+          tg_version: ${{ env.TG_VERSION }}
           tg_dir: "infra/live/${{ needs.set-env.outputs.target_env }}/frontend"
           tg_command: "apply"
           tg_add_approve: true
 
+  # Step 3: React App Build & S3/CloudFront Deployment
   deploy-app:
     needs: [set-env, infrastructure]
     if: github.event_name == 'push'
@@ -88,15 +95,15 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-1
 
-      - name: Sync Files to S3 & Invalidate CloudFront
+      - name: Sync Build to S3 & Invalidate CloudFront Cache
         run: |
           ENV="${{ needs.set-env.outputs.target_env }}"
           BUCKET_NAME="my-react-app-$ENV-site-unique123"
           
-          # Sync build artifacts
+          # Sync static production assets
           aws s3 sync ./frontend/build s3://$BUCKET_NAME --delete
 
-          # Find CloudFront Distribution ID and invalidate cache
+          # Find associated CloudFront Distribution ID and clear cache
           DIST_ID=$(aws cloudfront list-distributions --output json | jq -r --arg bucket "$BUCKET_NAME" '.DistributionList.Items[] | select(.Origins.Items[0].DomainName | contains($bucket)) | .Id')
           
           if [ -n "$DIST_ID" ] && [ "$DIST_ID" != "null" ]; then
