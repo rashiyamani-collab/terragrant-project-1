@@ -15,9 +15,11 @@ on:
 env:
   TOFU_VERSION: "1.8.8"
   TG_VERSION: "0.77.22"
+  # Force non-interactive behavior for OpenTofu & automation pipelines
+  TF_INPUT: "0"
+  TF_IN_AUTOMATION: "true"
 
 jobs:
-  # Step 1: Detect Target Environment based on Git Branch
   set-env:
     runs-on: ubuntu-latest
     outputs:
@@ -33,7 +35,6 @@ jobs:
             echo "target_env=dev" >> $GITHUB_OUTPUT
           fi
 
-  # Step 2: Infrastructure Provisioning (OpenTofu + Terragrunt)
   infrastructure:
     needs: set-env
     runs-on: ubuntu-latest
@@ -65,8 +66,9 @@ jobs:
           tg_dir: "infra/live/${{ needs.set-env.outputs.target_env }}/frontend"
           tg_command: "apply"
           tg_add_approve: true
+          # Pass non-interactive flag to suppress prompt locks
+          args: "--non-interactive"
 
-  # Step 3: React App Build & S3/CloudFront Deployment
   deploy-app:
     needs: [set-env, infrastructure]
     if: github.event_name == 'push'
