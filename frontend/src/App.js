@@ -7,7 +7,7 @@ function App() {
   return (
     <div className="App">
       <header className="navbar">
-        <div className="logo">🚀 CloudOps Demo</div>
+        <div className="logo">🚀 CloudOps Demo with SonarCloud</div>
         <nav>
           <a href="#features">Features</a>
           <a href="#architecture">Architecture</a>
